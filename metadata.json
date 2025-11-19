@@ -1,0 +1,5 @@
+{
+  "name": "HexoLocal Editor",
+  "description": "A modern, local-first Markdown editor designed specifically for managing Hexo blog posts with AI capabilities.",
+  "requestFramePermissions": []
+}

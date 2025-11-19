@@ -181,7 +181,8 @@ const Sidebar: React.FC<SidebarProps> = ({
             ) : (
             <ul className="divide-y divide-gray-100 dark:divide-slate-800/50">
                 {filteredPosts.map((post) => {
-                    const fm = post.frontMatter || {};
+                    // Fix TypeScript errors by casting fallback object to any
+                    const fm = post.frontMatter || ({} as any);
                     const hasTitle = fm.title && fm.title.trim() !== '';
                     const displayTitle = hasTitle ? fm.title : post.filename;
                     const date = fm.date ? (typeof fm.date === 'string' ? fm.date.slice(0, 10) : 'No date') : '';

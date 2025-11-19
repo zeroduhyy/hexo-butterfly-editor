@@ -4,7 +4,7 @@ import Editor from './components/Editor';
 import Toolbar from './components/Toolbar';
 import SettingsModal from './components/SettingsModal';
 import { fileService, parseFrontMatter } from './services/fileService';
-import { BlogPost, ViewMode, Asset, AppSettings, Theme } from './types';
+import { BlogPost, ViewMode, Asset, AppSettings, Theme, Language } from './types';
 import { TRANSLATIONS } from './constants';
 
 const App: React.FC = () => {
@@ -82,11 +82,12 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
         const settings = await fileService.getSettings();
+        // Fix: Explicitly cast types to satisfy TypeScript
         const safeSettings: AppSettings = {
             postsPath: settings.postsPath || '',
             imagesPath: settings.imagesPath || '',
-            language: settings.language || 'zh',
-            theme: settings.theme || 'dark'
+            language: (settings.language as Language) || 'zh',
+            theme: (settings.theme as Theme) || 'dark'
         };
         
         setAppSettings(safeSettings);

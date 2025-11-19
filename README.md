@@ -2,6 +2,10 @@
 
 **一句话说明**: 面向 Hexo + Butterfly 主题的本地 Markdown 编辑器与素材管理器，提供便捷的文章（`source/_posts`）和图片（`source/img`）的本地编写、上传与预览能力；前端基于 Vite + React，后端为轻量 Express API。
 
+**示意图**
+
+![示意图](img/image.png)
+
 **主要功能**
 - **文章管理**: 列表、创建、编辑、保存、删除 Markdown 文件。
 - **图片管理**: 列出站点图片、上传图片（支持按文章子目录存放）、复制图片引用路径。
@@ -10,6 +14,7 @@
 
 **适用场景**
 - 在本地直接编辑 Hexo 博客文章并管理图片，适合使用 Butterfly 主题或希望在本地快速编写/测试文章的用户。
+- 需要注意的是markdown语法仅部分支持
 
 **前提条件**
 - Node.js >= 18
@@ -58,3 +63,5 @@ npm run dev
 - **无法读取/写入文章或图片**:
   - 检查 `server.js` 是否正常运行（`npm run dev` 时 server 会在 3000 端口启动）。
   - 检查 `config.json` 中的 `postsPath` 与 `imagesPath` 是否为正确的 Hexo 目录，且 Node 进程有权限访问。
+
+### 如有问题欢迎提issue

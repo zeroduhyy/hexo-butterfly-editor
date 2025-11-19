@@ -1,5 +1,7 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { ViewMode, BlogPost, Asset } from '../types';
+import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 
 interface EditorProps {
   post: BlogPost;
@@ -12,135 +14,103 @@ interface EditorProps {
 const Editor: React.FC<EditorProps> = ({ post, assets, onChange, viewMode, t }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Initialize markdown-it with HTML support and link attributes
+  const md = useMemo(() => {
+    return new MarkdownIt({
+      html: true,          // Enable HTML tags in source
+      linkify: true,       // Auto-convert URL-like text to links
+      typographer: true,   // Enable smartquotes and other sweet transforms
+      breaks: true         // Convert '\n' in paragraphs into <br>
+    });
+  }, []);
+
   const getPreviewContent = (content: string) => {
     // Strip FrontMatter
     return content.replace(/^---[\s\S]*?---\n/, '');
   };
 
-  const renderMarkdown = (text: string) => {
-    let html = getPreviewContent(text);
-
-    // Helper: Escape HTML to prevent rendering tags inside code blocks
-    const escapeHtml = (unsafe: string) => {
-      return unsafe
-         .replace(/&/g, "&amp;")
-         .replace(/</g, "&lt;")
-         .replace(/>/g, "&gt;")
-         .replace(/"/g, "&quot;")
-         .replace(/'/g, "&#039;");
-    };
-
-    // Storage for placeholders
-    const codeBlocks: string[] = [];
-    const inlineCodes: string[] = [];
-
-    // 1. Extract Code Blocks (```lang ... ```)
-    html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
-      const escapedCode = escapeHtml(code);
-      const langClass = lang ? `language-${lang}` : '';
-      const placeholder = `__CODE_BLOCK_${codeBlocks.length}__`;
-      
-      const blockHtml = `<pre class="bg-gray-900 text-slate-300 p-4 rounded-lg my-4 overflow-x-auto border border-gray-800 font-mono text-sm leading-normal"><code class="${langClass}">${escapedCode}</code></pre>`;
-      
-      codeBlocks.push(blockHtml);
-      return placeholder;
-    });
-
-    // 2. Extract Inline Code (`...`)
-    html = html.replace(/`([^`]+)`/g, (match, code) => {
-      const escapedCode = escapeHtml(code);
-      const placeholder = `__INLINE_CODE_${inlineCodes.length}__`;
-      
-      const inlineHtml = `<code class="bg-gray-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded text-sm font-mono">${escapedCode}</code>`;
-      
-      inlineCodes.push(inlineHtml);
-      return placeholder;
-    });
-
-    // Helper to resolve image path
-    const resolveImagePath = (src: string) => {
-        let cleanSrc = src.trim();
-        // Handle <url> format if present
-        if (cleanSrc.startsWith('<') && cleanSrc.endsWith('>')) {
-            cleanSrc = cleanSrc.slice(1, -1);
-        }
-
-        // FIX: Prevent double prefixing if it's already an API path
-        if (cleanSrc.startsWith('/api/image/') || cleanSrc.startsWith('api/image/')) {
-             return cleanSrc.startsWith('/') ? cleanSrc : '/' + cleanSrc;
-        }
-        
-        // Skip external links and data URIs
-        if (cleanSrc.startsWith('http') || cleanSrc.startsWith('//') || cleanSrc.startsWith('data:')) {
-             return cleanSrc;
-        }
-        
-        // Logic 1: Detect Hexo standard paths (containing "img/" or "images/")
-        // e.g. "../img/18/1.jpg" -> "18/1.jpg"
-        const imgMatch = cleanSrc.match(/(?:img|images)[\\\/](.*)/i);
-        
-        if (imgMatch && imgMatch[1]) {
-            return `/api/image/${imgMatch[1]}`;
-        } 
-        
-        // Logic 2: Relative paths without explicit 'img' folder
-        // e.g. "18/3.png" or "../18/3.png" -> "18/3.png"
-        let normalized = cleanSrc.replace(/^(\.{1,2}[\\\/])+/g, '');
-        
-        // Clean up leading slash
-        if (normalized.startsWith('/') || normalized.startsWith('\\')) {
-            normalized = normalized.substring(1);
-        }
-
-        return `/api/image/${normalized}`;
-    };
-
-    // 3. Process Standard Markdown Images ![alt](url)
-    html = html.replace(/!\[(.*?)\]\(\s*(.*?)\s*\)/g, (match, alt, src) => {
-        const realSrc = resolveImagePath(src);
-        return `<img alt='${alt}' src='${realSrc}' class='my-4 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm max-w-full block mx-auto' />`;
-    });
-
-    // 4. Process HTML Image Tags <img src="...">
-    // Robust regex to handle attributes, spaces, and different quote styles
-    html = html.replace(/<img\s+(?:[^>]*?\s+)?src\s*=\s*(["'])(.*?)\1[^>]*?>/gi, (match, quote, src) => {
-        const realSrc = resolveImagePath(src);
-        return `<img src='${realSrc}' class='my-4 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm max-w-full block mx-auto' />`;
-    });
+  // Helper to resolve image paths for Hexo
+  const resolveImagePath = (src: string) => {
+    let cleanSrc = src.trim();
     
-    // Also handle cases where quotes might be missing or format is loose (fallback)
-    // Matches <img ... src=... > if the above strict regex missed it
-    html = html.replace(/<img\s+(?=[^>]*\ssrc\s*=\s*([^>\s]+))[^>]*>/gi, (match, src) => {
-         // If specifically matched above, this might not be needed, but keeps it safe for unquoted src
-         const realSrc = resolveImagePath(src.replace(/['"]/g, '')); 
-         return `<img src='${realSrc}' class='my-4 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm max-w-full block mx-auto' />`;
+    // Handle <url> format if present
+    if (cleanSrc.startsWith('<') && cleanSrc.endsWith('>')) {
+      cleanSrc = cleanSrc.slice(1, -1);
+    }
+
+    // Prevent double prefixing if it's already an API path
+    if (cleanSrc.startsWith('/api/image/') || cleanSrc.startsWith('api/image/')) {
+      return cleanSrc.startsWith('/') ? cleanSrc : '/' + cleanSrc;
+    }
+    
+    // Skip external links and data URIs
+    if (cleanSrc.startsWith('http') || cleanSrc.startsWith('//') || cleanSrc.startsWith('data:')) {
+      return cleanSrc;
+    }
+    
+    // Detect Hexo standard paths (containing "img/" or "images/")
+    // e.g. "../img/18/1.jpg" -> "18/1.jpg"
+    const imgMatch = cleanSrc.match(/(?:img|images)[\\\/](.*)/i);
+    
+    if (imgMatch && imgMatch[1]) {
+      return `/api/image/${imgMatch[1]}`;
+    } 
+    
+    // Relative paths without explicit 'img' folder
+    // e.g. "18/3.png" or "../18/3.png" -> "18/3.png"
+    let normalized = cleanSrc.replace(/^(\.{1,2}[\\\/])+/g, '');
+    
+    // Clean up leading slash
+    if (normalized.startsWith('/') || normalized.startsWith('\\')) {
+      normalized = normalized.substring(1);
+    }
+
+    return `/api/image/${normalized}`;
+  };
+
+  const renderMarkdown = (text: string) => {
+    const markdownContent = getPreviewContent(text);
+    
+    // Render markdown to HTML
+    let html = md.render(markdownContent);
+    
+    // Post-process: Fix image paths for Hexo convention
+    html = html.replace(/<img\s+([^>]*?)src=["']([^"']+)["']([^>]*?)>/gi, (match, before, src, after) => {
+      const resolvedSrc = resolveImagePath(src);
+      return `<img ${before}src="${resolvedSrc}"${after} class="my-4 rounded-lg border border-gray-200 dark:border-slate-700 shadow-sm max-w-full block mx-auto" />`;
     });
 
-    // 5. Process Standard Markdown Headings and other elements
+    // Add Tailwind classes to rendered elements
     html = html
-      .replace(/^# (.*$)/gim, '<h1 class="text-3xl font-bold mb-4 text-gray-900 dark:text-slate-100 border-b border-gray-200 dark:border-slate-700 pb-2">$1</h1>')
-      .replace(/^## (.*$)/gim, '<h2 class="text-2xl font-bold mb-3 text-gray-800 dark:text-slate-200 mt-6">$1</h2>')
-      .replace(/^### (.*$)/gim, '<h3 class="text-xl font-bold mb-2 text-gray-800 dark:text-slate-200 mt-4">$1</h3>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong class="text-indigo-600 dark:text-indigo-400 font-bold">$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em class="italic text-gray-600 dark:text-slate-300">$1</em>')
-      .replace(/\[(.*?)\]\((.*?)\)/g, "<a href='$2' target='_blank' class='text-indigo-600 dark:text-indigo-400 hover:underline'>$1</a>")
-      .replace(/^> (.*$)/gim, '<blockquote class="border-l-4 border-indigo-500 pl-4 italic text-gray-500 dark:text-slate-400 my-4 py-1 bg-gray-50 dark:bg-slate-800/50 rounded-r">$1</blockquote>')
-      .replace(/^---$/gim, '<hr class="my-6 border-gray-200 dark:border-slate-700" />');
+      .replace(/<h1>/g, '<h1 class="text-3xl font-bold mb-4 text-gray-900 dark:text-slate-100 border-b border-gray-200 dark:border-slate-700 pb-2">')
+      .replace(/<h2>/g, '<h2 class="text-2xl font-bold mb-3 text-gray-800 dark:text-slate-200 mt-6">')
+      .replace(/<h3>/g, '<h3 class="text-xl font-bold mb-2 text-gray-800 dark:text-slate-200 mt-4">')
+      .replace(/<h4>/g, '<h4 class="text-lg font-bold mb-2 text-gray-700 dark:text-slate-300 mt-3">')
+      .replace(/<h5>/g, '<h5 class="text-base font-bold mb-1 text-gray-700 dark:text-slate-300 mt-2">')
+      .replace(/<h6>/g, '<h6 class="text-sm font-bold mb-1 text-gray-600 dark:text-slate-400 mt-2">')
+      .replace(/<strong>/g, '<strong class="text-indigo-600 dark:text-indigo-400 font-bold">')
+      .replace(/<em>/g, '<em class="italic text-gray-600 dark:text-slate-300">')
+      .replace(/<a\s+/g, '<a class="text-indigo-600 dark:text-indigo-400 hover:underline" target="_blank" rel="noopener noreferrer" ')
+      .replace(/<blockquote>/g, '<blockquote class="border-l-4 border-indigo-500 pl-4 italic text-gray-500 dark:text-slate-400 my-4 py-2 bg-gray-50 dark:bg-slate-800/50 rounded-r">')
+      .replace(/<hr\s*\/?>/g, '<hr class="my-6 border-gray-200 dark:border-slate-700" />')
+      .replace(/<code>/g, '<code class="bg-gray-100 dark:bg-slate-800 text-indigo-600 dark:text-indigo-300 px-1.5 py-0.5 rounded text-sm font-mono">')
+      .replace(/<pre><code/g, '<pre class="bg-gray-900 text-slate-300 p-4 rounded-lg my-4 overflow-x-auto border border-gray-800"><code class="font-mono text-sm leading-normal"')
+      .replace(/<ul>/g, '<ul class="list-disc list-inside my-4 space-y-2 text-gray-700 dark:text-slate-300">')
+      .replace(/<ol>/g, '<ol class="list-decimal list-inside my-4 space-y-2 text-gray-700 dark:text-slate-300">')
+      .replace(/<li>/g, '<li class="ml-4">')
+      .replace(/<table>/g, '<table class="min-w-full my-4 border border-gray-200 dark:border-slate-700">')
+      .replace(/<thead>/g, '<thead class="bg-gray-100 dark:bg-slate-800">')
+      .replace(/<th>/g, '<th class="border border-gray-200 dark:border-slate-700 px-4 py-2 text-left font-bold text-gray-700 dark:text-slate-300">')
+      .replace(/<td>/g, '<td class="border border-gray-200 dark:border-slate-700 px-4 py-2 text-gray-600 dark:text-slate-400">');
 
-    // 6. Convert newlines to breaks (only for the text outside code blocks)
-    html = html.replace(/\n/g, '<br />');
-
-    // 7. Restore Code Blocks
-    html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, index) => {
-       return codeBlocks[parseInt(index, 10)];
+    // Sanitize HTML to prevent XSS attacks
+    const cleanHtml = DOMPurify.sanitize(html, {
+      ADD_ATTR: ['target', 'rel'], // Allow target and rel attributes for links
+      ADD_TAGS: ['iframe'],         // Allow iframe if needed (be careful with this)
+      FORBID_TAGS: ['script', 'style'], // Explicitly forbid dangerous tags
     });
 
-    // 8. Restore Inline Code
-    html = html.replace(/__INLINE_CODE_(\d+)__/g, (match, index) => {
-       return inlineCodes[parseInt(index, 10)];
-    });
-
-    return { __html: html };
+    return { __html: cleanHtml };
   };
 
   const showEditor = viewMode === ViewMode.EDIT || viewMode === ViewMode.SPLIT;

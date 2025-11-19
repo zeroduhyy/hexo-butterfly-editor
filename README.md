@@ -19,7 +19,6 @@
 - 克隆并安装依赖：
 
 ```powershell
-git clone <repo-url>
 cd hexolocal-editor
 npm install
 ```
@@ -48,16 +47,7 @@ npm run dev
 - 后端默认监听 `http://localhost:3000`。
 - Vite 开发服务器默认 `http://localhost:5173`，并通过 `vite.config.ts` 中的 `server.proxy` 将以 `/api` 开头的请求代理到后端，因此前端代码使用相对地址 `/api`。
 
-**构建与生产部署**
-- 构建前端：
 
-```powershell
-npm run build
-```
-
-- 构建产物在 `dist/`。常见部署方案：
-- - 静态 + 后端：把 `dist/` 部署到静态托管（如 Nginx、Vercel 等），后端 `server.js` 单独部署，确保 `/api` 路由能正确指向后端。 
-- - 单机部署：若希望用同一台机器托管前后端，可在 `server.js` 中添加一段静态托管 `dist/` 的代码（需要手动修改 `server.js`），我可以为你补充这个示例。
 
 **常见问题与排查**
 - **页面只有深色背景但无 UI**:
